@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>美颜相机 - 独特魅力发现器</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <style>
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: #333;
+            min-height: 100vh;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .background {
+            position: fixed;
+            left: 0; top: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 0;
+        }
+        #particle-canvas {
+            position: absolute;
+            left: 0; top: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .main-content {
+            position: relative;
+            z-index: 2;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0 0 0;
+            width: 100%;
+            background: rgba(255,255,255,0.8);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin: 0;
+            color: #ff4757;
+            font-size: 2.2rem;
+        }
+        .subtitle {
+            margin-top: 5px;
+            color: #666;
+            font-size: 1rem;
+        }
+        .camera-container {
+            position: relative;
+            width: 700px;
+            height: 1200px;
+            max-width: 90vw;
+            max-height: 95vh;
+            background: #111;
+            border-radius: 40px;
+            border: 10px solid #fff;
+            box-shadow: 0 0 40px #222, 0 0 0 20px #000;
+            overflow: hidden;
+            margin: 30px auto 0 auto;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        video, canvas {
+            position: absolute;
+            left: 0; top: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        canvas {
+            pointer-events: none;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            z-index: 3;
+        }
+        button {
+            background: linear-gradient(45deg, #ff4757, #ff6b81);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            margin: 10px;
+            border-radius: 50px;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 107, 129, 0.4);
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(255, 107, 129, 0.6);
+        }
+        button:active {
+            transform: translateY(1px);
+        }
+        .compliment-display {
+            margin: 20px 0;
+            padding: 15px 20px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 10px;
+            width: 80%;
+            max-width: 500px;
+            text-align: center;
+            font-size: 18px;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-left: 5px solid #ff4757;
+            z-index: 3;
+        }
+        .loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            z-index: 10;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 5px solid #ff4757;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
+        @media (max-width: 500px) {
+            .camera-container {
+                width: 95vw;
+                height: 70vw;
+                min-height: 60vw;
+                border-radius: 8vw;
+                border-width: 3vw;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background">
+        <canvas id="particle-canvas"></canvas>
+        <div class="main-content">
+            <div class="header">
+                <h1>美颜相机</h1>
+                <p class="subtitle">发现你独特的魅力</p>
+            </div>
+            <div class="camera-container">
+                <video id="camera" autoplay playsinline></video>
+                <canvas id="output-canvas"></canvas>
+                <canvas id="effect-canvas"></canvas>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>正在加载美颜引擎...</p>
+                </div>
+            </div>
+            <div class="compliment-display" id="compliment-text">
+                等待检测到你的美丽面容...
+            </div>
+            <div class="controls">
+                <button id="start-btn">开启美颜</button>
+                <button id="toggle-effect">关闭特效</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // 粒子拖尾特效
+        const particleCanvas = document.getElementById('particle-canvas');
+        const ctx = particleCanvas.getContext('2d');
+        let particles = [];
+        function resizeParticleCanvas() {
+            particleCanvas.width = window.innerWidth;
+            particleCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeParticleCanvas);
+        resizeParticleCanvas();
+        function createParticle() {
+            const angle = Math.random() * 2 * Math.PI;
+            const speed = 1 + Math.random() * 2;
+            return {
+                x: Math.random() * particleCanvas.width,
+                y: Math.random() * particleCanvas.height,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 2 + Math.random() * 3,
+                alpha: 0.7 + Math.random() * 0.3,
+                tail: []
+            };
+        }
+        for (let i = 0; i < 60; i++) particles.push(createParticle());
+        function drawParticles() {
+            ctx.globalAlpha = 0.2;
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, particleCanvas.width, particleCanvas.height);
+            ctx.globalAlpha = 1.0;
+            for (let p of particles) {
+                // 绘制拖尾
+                ctx.save();
+                for (let i = 0; i < p.tail.length; i++) {
+                    const t = p.tail[i];
+                    ctx.globalAlpha = p.alpha * (i / p.tail.length) * 0.5;
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, p.size * (1 - i / p.tail.length), 0, 2 * Math.PI);
+                    ctx.fillStyle = "#ff6b81";
+                    ctx.fill();
+                }
+                ctx.restore();
+                // 绘制粒子本体
+                ctx.globalAlpha = p.alpha;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, 2 * Math.PI);
+                ctx.fillStyle = "#fff";
+                ctx.shadowColor = "#ff6b81";
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+                // 更新位置
+                p.tail.unshift({x: p.x, y: p.y});
+                if (p.tail.length > 15) p.tail.pop();
+                p.x += p.vx;
+                p.y += p.vy;
+                if (p.x < 0 || p.x > particleCanvas.width || p.y < 0 || p.y > particleCanvas.height) {
+                    Object.assign(p, createParticle());
+                }
+            }
+            requestAnimationFrame(drawParticles);
+        }
+        drawParticles();
+        // 全局变量
+        let faceMesh = null;
+        let camera = null;
+        let lastComplimentTime = 0;
+        let isSpeaking = false;
+        let effectEnabled = true;
+        let currentUtterance = null;
+        let hands = null;
+        let lastHandLandmarks = null;
+        let lastHandTime = 0;
+        let handWaveCooldown = false;
+        
+        // 五官分项夸赞语句
+        const compliments = [
+            "你的眼睛像是含有星辰的深海，每次凝视都让人沉醉",
+            "你的鼻梁挺拔，唇形优美，整个面部轮廓都散发着优雅气质",
+            "你的眉毛如弓弦般柔和而坚毅，眼睛深邃如海",
+            "你的笑容如同初升的太阳，温暖而明亮",
+            "你的五官精致得仿佛是大自然精心雕琢的艺术品",
+            "你的皮肤白皙细腻，仿佛轻轻一碰就能留下痕迹",
+            "你的脸庞宛如一幅精致的画作，每个细节都恰到好处",
+            "你的眼睛闪烁着智慧的光芒，嘴角挂着温和的微笑"
+        ];
+        
+        // 元素引用
+        const video = document.getElementById('camera');
+        const outputCanvas = document.getElementById('output-canvas');
+        const effectCanvas = document.getElementById('effect-canvas');
+        const effectCtx = effectCanvas.getContext('2d');
+        const complimentText = document.getElementById('compliment-text');
+        const startBtn = document.getElementById('start-btn');
+        const toggleEffectBtn = document.getElementById('toggle-effect');
+        const loading = document.getElementById('loading');
+        
+        // 初始化FaceMesh
+        function initFaceMesh() {
+            faceMesh = new FaceMesh({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                }
+            });
+            
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            
+            faceMesh.onResults(onResults);
+        }
+        
+        // 初始化Hands
+        function initHands() {
+            hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7
+            });
+            hands.onResults(onHandResults);
+        }
+        
+        // 启动摄像头
+        function startCamera() {
+            camera = new Camera(video, {
+                onFrame: async () => {
+                    if (faceMesh) {
+                        await faceMesh.send({image: video});
+                    }
+                    if (hands) {
+                        await hands.send({image: video});
+                    }
+                },
+                width: 800,
+                height: 600
+            });
+            camera.start();
+        }
+        
+        // 处理结果
+        function onResults(results) {
+            // 更新画布大小
+            outputCanvas.width = video.videoWidth;
+            outputCanvas.height = video.videoHeight;
+            effectCanvas.width = video.videoWidth;
+            effectCanvas.height = video.videoHeight;
+            
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                // 获取人脸中心点 (鼻尖)
+                const landmarks = results.multiFaceLandmarks[0];
+                const noseTip = landmarks[4];
+                
+                // 每10秒随机播放一次赞美
+                const now = Date.now();
+                if (now - lastComplimentTime > 10000 && !isSpeaking && effectEnabled) {
+                    lastComplimentTime = now;
+                    playRandomCompliment();
+                }
+                
+                // 应用挤压效果
+                if (effectEnabled) {
+                    applyPinchEffect(noseTip);
+                } else {
+                    // 关闭特效时只显示原始视频
+                    effectCtx.clearRect(0, 0, effectCanvas.width, effectCanvas.height);
+                    effectCtx.drawImage(video, 0, 0, effectCanvas.width, effectCanvas.height);
+                }
+            } else {
+                // 没有检测到人脸时清除效果画布
+                effectCtx.clearRect(0, 0, effectCanvas.width, effectCanvas.height);
+            }
+        }
+        
+        // 应用挤压效果
+        function applyPinchEffect(center) {
+            effectCtx.clearRect(0, 0, effectCanvas.width, effectCanvas.height);
+            effectCtx.drawImage(video, 0, 0, effectCanvas.width, effectCanvas.height);
+            
+            const imageData = effectCtx.getImageData(0, 0, effectCanvas.width, effectCanvas.height);
+            const pixels = imageData.data;
+            const width = effectCanvas.width;
+            const height = effectCanvas.height;
+            
+            const cx = center.x * width;
+            const cy = center.y * height;
+            const radius = Math.min(width, height) * 0.4;
+            const strength = 0.6;
+            
+            // 创建新的图像数据以存储效果
+            const effectImageData = new ImageData(width, height);
+            const outputPixels = effectImageData.data;
+            
+            // 应用挤压效果
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const index = (y * width + x) * 4;
+                    let srcX = x, srcY = y;
+                    
+                    // 计算与中心点的距离
+                    const dx = x - cx;
+                    const dy = y - cy;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < radius) {
+                        // 挤压效果计算
+                        const r = distance / radius;
+                        const a = 1 + Math.pow(1 - r, 2) * strength;
+                        srcX = cx + dx * a;
+                        srcY = cy + dy * a;
+                    }
+                    
+                    // 边界检查
+                    srcX = Math.max(0, Math.min(width - 1, srcX));
+                    srcY = Math.max(0, Math.min(height - 1, srcY));
+                    
+                    // 获取原图相应位置像素
+                    const srcIndex = (Math.floor(srcY) * width + Math.floor(srcX)) * 4;
+                    
+                    // 复制像素
+                    outputPixels[index]     = pixels[srcIndex];
+                    outputPixels[index + 1] = pixels[srcIndex + 1];
+                    outputPixels[index + 2] = pixels[srcIndex + 2];
+                    outputPixels[index + 3] = pixels[srcIndex + 3];
+                }
+            }
+            
+            // 绘制结果
+            effectCtx.putImageData(effectImageData, 0, 0);
+        }
+        
+        // 播放随机赞美语音
+        function playRandomCompliment() {
+            const randomCompliment = compliments[Math.floor(Math.random() * compliments.length)];
+            complimentText.textContent = randomCompliment;
+            speakText(randomCompliment);
+        }
+        
+        // 使用Web Speech API播放语音
+        function speakText(text) {
+            // 立即停止所有语音
+            window.speechSynthesis.cancel();
+            
+            // 创建新的语音实例
+            currentUtterance = new SpeechSynthesisUtterance(text);
+            currentUtterance.lang = 'zh-CN';
+            currentUtterance.rate = 0.9;  // 稍慢的语速
+            currentUtterance.pitch = 1.0; // 正常音调
+            
+            // 设置语音结束回调
+            currentUtterance.onend = function() {
+                isSpeaking = false;
+            };
+            
+            // 播放语音
+            window.speechSynthesis.speak(currentUtterance);
+            isSpeaking = true;
+        }
+        
+        // 特效切换功能
+        function toggleEffect() {
+            effectEnabled = !effectEnabled;
+            toggleEffectBtn.textContent = effectEnabled ? "关闭特效" : "开启特效";
+            
+            if (!effectEnabled) {
+                // 关闭特效时立即停止所有语音
+                window.speechSynthesis.cancel();
+                
+                // 播放专属语音
+                complimentText.textContent = "你的存在本身就是宇宙精心设计的奇迹，不必对照他人的星光";
+                speakText(complimentText.textContent);
+            }
+        }
+        
+        // 手势识别回调
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                // 判断是否为竖大拇指
+                if (isThumbsUp(hand) && !handWaveCooldown) {
+                    handWaveCooldown = true;
+                    setTimeout(()=>{handWaveCooldown=false;}, 1500);
+                    // 触发关闭特效
+                    if(effectEnabled) toggleEffect();
+                }
+            }
+        }
+        // 判断是否为竖大拇指
+        function isThumbsUp(landmarks) {
+            // 1. 大拇指指尖高于大拇指根部，且大拇指接近竖直方向
+            // 2. 其余手指指尖低于各自的第二关节
+            const thumbTip = landmarks[4];
+            const thumbMcp = landmarks[2];
+            // 竖直方向判断（y轴朝下，所以上竖起是y更小）
+            const isThumbUp = thumbTip.y < thumbMcp.y;
+            // 判断大拇指方向是否接近竖直
+            const dx = thumbTip.x - thumbMcp.x;
+            const dy = thumbTip.y - thumbMcp.y;
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            // 角度接近-90度（竖直向上），允许一定容差
+            const isVertical = angle < -60 && angle > -120;
+            // 其余手指
+            let otherFingersBent = true;
+            const fingerTips = [8, 12, 16, 20];
+            const fingerPips = [6, 10, 14, 18];
+            for (let i = 0; i < 4; i++) {
+                if (landmarks[fingerTips[i]].y < landmarks[fingerPips[i]].y - 0.02) {
+                    otherFingersBent = false;
+                    break;
+                }
+            }
+            return isThumbUp && isVertical && otherFingersBent;
+        }
+        
+        // 初始化页面
+        function initPage() {
+            // 检查浏览器是否支持语音合成
+            if (!('speechSynthesis' in window)) {
+                alert('您的浏览器不支持语音合成功能，部分体验可能受限');
+            }
+            
+            // 初始化FaceMesh
+            initFaceMesh();
+            initHands();
+            
+            // 添加按钮事件监听
+            startBtn.addEventListener('click', async () => {
+                startBtn.disabled = true;
+                startBtn.textContent = "美颜启动中...";
+                
+                try {
+                    await startCamera();
+                    loading.classList.add('hidden');
+                    startBtn.textContent = "美颜已开启";
+                } catch (err) {
+                    console.error("相机启动失败:", err);
+                    alert("无法访问相机。请确保相机已连接且已授予访问权限。");
+                    startBtn.disabled = false;
+                    startBtn.textContent = "开启美颜";
+                }
+            });
+            
+            // 特效切换按钮
+            toggleEffectBtn.addEventListener('click', toggleEffect);
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>
